@@ -86,7 +86,7 @@ apt-get install -y mysql-server
 # Allow connections to this server from outside
 #sed -i 's/bind-address/#bind-address/g' /etc/mysql/my.cnf
 
-# Create new user and database: devuser:devpass@devdb and allow to connect from outside and localhost
+# Create new user and database devuser:devpass@devdb and allow to connect from outside and localhost
 #mysql --user=root --password=$mysql_password -e "CREATE DATABASE IF NOT EXISTS devdb; GRANT ALL ON devdb.* TO 'devuser'@'%' IDENTIFIED BY 'devpass'; GRANT ALL ON devdb.* TO 'devuser'@'localhost' IDENTIFIED BY 'devpass'; FLUSH PRIVILEGES;"
 
 ########################
