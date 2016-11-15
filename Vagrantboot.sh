@@ -1,42 +1,66 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-########################
-#       General        #
-########################
+# Prerequisites #
+#################
 
-# Enter in root account
-sudo su
+# Create vagrant log directory
+mkdir /var/log/vagrant
 
-# Surpress the locale enviroment error
-export LC_ALL="en_US.UTF-8"
-echo 'LC_ALL="en_US.UTF-8"' >> /etc/environment
-export LANGUAGE="en_US:en"
-echo 'LANGUAGE="en_US:en"' >> /etc/environment
-locale-gen en_US en_US.UTF-8
-dpkg-reconfigure locales
+# Initialize vagrant log file variable
+VLOG=/var/log/vagrant/boot.log
 
-# Set this variable because we don't want to pe prompted with fields
+# Utility function to display progress
+function progress {
+
+    echo    "$1"
+
+    echo -e "\n\n**************************************************" >> $VLOG
+    echo    "* $1" >> $VLOG
+    echo -e "**************************************************\n\n" >> $VLOG
+}
+
+# Add locales
+echo "
+LANG=\"en_US.UTF-8\"
+LANGUAGE=\"en_US.UTF-8\"
+LC_CTYPE=\"en_US.UTF-8\"
+LC_NUMERIC=\"en_US.UTF-8\"
+LC_TIME=\"en_US.UTF-8\"
+LC_COLLATE=\"en_US.UTF-8\"
+LC_MONETARY=\"en_US.UTF-8\"
+LC_MESSAGES=\"en_US.UTF-8\"
+LC_PAPER=\"en_US.UTF-8\"
+LC_NAME=\"en_US.UTF-8\"
+LC_ADDRESS=\"en_US.UTF-8\"
+LC_TELEPHONE=\"en_US.UTF-8\"
+LC_MEASUREMENT=\"en_US.UTF-8\"
+LC_IDENTIFICATION=\"en_US.UTF-8\"
+LC_ALL=\"en_US.UTF-8\"" >> /etc/environment
+
+# Disable prompt
 export DEBIAN_FRONTEND=noninteractive
 
-# Update sources
-apt-get update
+# Update package list
+apt-get update &>> $VLOG
 
-# Install base software - Some of the base software is already instaled in Ubuntu Server (trusty) 14.04
-#apt-get install -y vim 
-apt-get install -y mc
-#apt-get install -y curl
-apt-get install -y git # this is required for Composer to install dependencies
-#apt-get install -y debconf-utils # this is required for preconfiguring fields when prompted - this is already installed
+# Git #
+#######
 
-########################
-#        Apache        #
-########################
+progress "Installing Git"
 
-# Install apache2
-apt-get install -y apache2
+# Install Git
+apt-get install -y git &>> $VLOG
+
+# Apache #
+##########
+
+progress "Installing Apache"
+
+# Install Apache
+apt-get install -y apache2 &>> $VLOG
 
 # Disable default virtual host
-a2dissite 000-default
+a2dissite 000-default &>> $VLOG
 
 # Create dev virtual host config
 # http://www.debian-administration.org/articles/412
@@ -47,10 +71,9 @@ echo "<VirtualHost *:80>
 
     # Indexes + Directory Root.
     DirectoryIndex index.html index.php
-    DocumentRoot /vagrant/
+    DocumentRoot /vagrant/public
 
-    # Rewrite
-    <Directory /vagrant/>
+    <Directory /vagrant/public>
         Options Indexes FollowSymLinks
         AllowOverride All
         Require all granted
@@ -65,14 +88,13 @@ echo "<VirtualHost *:80>
 </VirtualHost>" > /etc/apache2/sites-available/001-dev.conf
 
 # Enable de virtual host
-a2ensite 001-dev
+a2ensite 001-dev &>> $VLOG
 
 # Enable mod_rewrite for apache
-a2enmod rewrite
+a2enmod rewrite &>> $VLOG
 
-########################
-#         MySQL        #
-########################
+# MySQL #
+#########
 
 # This will answer the future questions for the wizard
 # http://askubuntu.com/questions/79257/how-do-i-install-mysql-without-a-password-prompt
@@ -81,30 +103,32 @@ echo 'mysql-server mysql-server/root_password password '$mysql_password | debcon
 echo 'mysql-server mysql-server/root_password_again password '$mysql_password | debconf-set-selections # echo 'mysql-server-5.5 mysql-server/root_password_again password '$mysql_password | debconf-set-selections
 
 # Install mysql-server
-apt-get install -y mysql-server
+apt-get install -y mysql-server &>> $VLOG
 
 # Allow connections to this server from outside
 #sed -i 's/bind-address/#bind-address/g' /etc/mysql/my.cnf
 
 # Create new user and database devuser:devpass@devdb and allow to connect from outside and localhost
-#mysql --user=root --password=$mysql_password -e "CREATE DATABASE IF NOT EXISTS devdb; GRANT ALL ON devdb.* TO 'devuser'@'%' IDENTIFIED BY 'devpass'; GRANT ALL ON devdb.* TO 'devuser'@'localhost' IDENTIFIED BY 'devpass'; FLUSH PRIVILEGES;"
+mysql --user=root --password=$mysql_password -e "CREATE DATABASE IF NOT EXISTS devdb; GRANT ALL ON devdb.* TO 'devuser'@'%' IDENTIFIED BY 'devpass'; GRANT ALL ON devdb.* TO 'devuser'@'localhost' IDENTIFIED BY 'devpass'; FLUSH PRIVILEGES;"
 
-########################
-#         PHP5         #
-########################
+# PHP #
+#######
 
-# Install php5
-apt-get install -y php5 php5-mysql php5-mcrypt # libapache2-mod-php5 - this library is bundeled with php5 metapackage; php5-mcrypt is required for Laravel and PHPMyAdmin
+progress "Installing PHP"
+
+# Install PHP
+apt-get install -y php5 php5-mysql php5-mcrypt &>> $VLOG #libapache2-mod-php5: this library is already bundeled with php5 metapackage; php5-mcrypt is required for Laravel and PHPMyAdmin
 
 # Enable php5-mcrypt mode
-php5enmod mcrypt
+php5enmod mcrypt &>> $VLOG
 
-# Restart mysql service
-service mysql restart
+# Restart MySQL
+service mysql restart &>> $VLOG
 
-########################
-#      PHPMyAdmin      #
-########################
+# PHPMyAdmin #
+##############
+
+progress "Installing PHPMyAdmin"
 
 # This will answer the future questions for the wizard
 phpmyadmin_password='654321'
@@ -115,53 +139,80 @@ echo 'phpmyadmin phpmyadmin/mysql/app-pass password '$phpmyadmin_password | debc
 echo 'phpmyadmin phpmyadmin/app-password-confirm password '$phpmyadmin_password | debconf-set-selections
 
 # Install PHPMyAdmin
-apt-get install -y phpmyadmin
+apt-get install -y phpmyadmin &>> $VLOG
 
-# Restart apache2 to reload the configuration
-service apache2 restart
+# Restart Apache
+service apache2 restart &>> $VLOG
+
+# Composer #
+############
+
+progress "Installing Composer"
+
+# Download Composer Installer
+php -r "readfile('https://getcomposer.org/installer');" > composer-installer.php
 
 # Install Composer
-#curl -sS https://getcomposer.org/installer | php
-#mv composer.phar /usr/local/bin/composer
+su -c "php composer-installer.php" -l vagrant &>> $VLOG
 
-# Add RO language because PHP needs to know how to sort special characters
-#locale-gen ro_RO
-#locale-gen ro_RO.UTF-8
+# Remove Composer Installer
+php -r "unlink('composer-installer.php');"
 
-# List all the available languages in the system
-#locale -a
+# Make Composer available anywhere for vagrant user
+mkdir -p /home/vagrant/bin &>> $VLOG
+mv composer.phar /home/vagrant/bin/composer &>> $VLOG
 
-# Install NodeJS from repo
-#apt-get install -y python-software-properties python g++ make
-#add-apt-repository -y ppa:chris-lea/node.js
-#apt-get update
-#apt-get install -y nodejs
+# Add Composer bin directory to path
+echo "
+# set PATH to include Composer's bin
+PATH=\"\$PATH:\$HOME/.composer/vendor/bin\"" >> /home/vagrant/.profile
 
-# Install Git because SailsJS needs it
-#apt-get install -y git-core
+# NodeJS #
+##########
 
-# Install SailsJS
-#npm -g install sails
+progress "Installing Node.js"
 
-# Create Sencha directory, and children
-#mkdir /opt/Sencha
-#mkdir /opt/Sencha/ExtJS
-#mkdir /opt/Sencha/Cmd
+# Run remote setup
+curl -sL https://deb.nodesource.com/setup_5.x | bash - &>> $VLOG
 
-# Get Sencha ExtJS SDK and place it in temporary folder
-#wget http://cdn.sencha.com/ext/gpl/ext-4.2.1-gpl.zip -P /tmp/
+# Install NodeJS
+apt-get install -y nodejs &>> $VLOG
 
-# Unzip Sencha ExtJS SDK
-#unzip /tmp/ext-4.2.1-gpl.zip -d /opt/Sencha/ExtJS/
+# Laravel #
+############
 
-# Get Sencha Cmd and place it in temporary folder
-#wget http://cdn.sencha.com/cmd/4.0.1.45/SenchaCmd-4.0.1.45-linux.run.zip -P /tmp/
+#progress "Installing Laravel"
 
-# Unzip Sencha Cmd in the same directory
-#unzip /tmp/SenchaCmd-4.0.1.45-linux.run.zip
+# Install Laravel
+#su -c "composer global require \"laravel/installer\"" -l vagrant &>> $VLOG
 
-# Install Java Runtime Enviorment from repo
-#add-apt-repository -y ppa:webupd8team/java
-#apt-get update
-#apt-get install -y oracle-java7-installer
+# Configure #
+#############
 
+progress "Preparing application"
+
+# Install app dependencies
+su -c "cd /vagrant && composer install" -l vagrant &>> $VLOG
+su -c "cd /vagrant && npm install" -l vagrant &>> $VLOG
+
+# Copy app environment file
+cp /vagrant/.env.example /vagrant/.env
+
+# Set app environment file variables
+sed -i 's/DB_DATABASE=homestead/DB_DATABASE=devdb/g' /vagrant/.env
+sed -i 's/DB_USERNAME=homestead/DB_USERNAME=devuser/g' /vagrant/.env
+sed -i 's/DB_PASSWORD=secret/DB_PASSWORD=devpass/g' /vagrant/.env
+
+# Optimize app
+su -c "cd /vagrant && php artisan optimize" -l vagrant &>> $VLOG
+
+# Generate key
+su -c "cd /vagrant && php artisan key:generate" -l vagrant &>> $VLOG
+
+# Migrate database
+su -c "cd /vagrant && php artisan migrate" -l vagrant &>> $VLOG
+
+# Done #
+########
+
+progress "Ready!"
